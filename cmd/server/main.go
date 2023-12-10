@@ -1,41 +1,28 @@
 package main
 
 import (
-	"fmt"
-	"net/http"
-	"sync"
+	"awesomeProject1/internal/handlers"
+	"github.com/gin-gonic/gin"
 )
 
-type MemStorage struct {
-	gauge   map[string]float64 `json:"gauge"`
-	counter map[string]int64   `json:"counter"`
-}
-
-func (m *MemStorage) countValue(k string, v int64) {
-	mu.Lock()
-	defer mu.Unlock()
-	m.counter[k] += v
-	fmt.Println(m.counter)
-}
-func (m *MemStorage) gaugeValue(k string, v float64) {
-	mu.Lock()
-	defer mu.Unlock()
-	m.gauge[k] = v
-	fmt.Println(m.gauge)
-}
-
-var globalMemory = MemStorage{}
-var mu sync.Mutex
+var globalMemory = handlers.MemStorage{}
 
 func main() {
-	mux := http.NewServeMux()
-	mux.HandleFunc(`/update/counter/`, counterMetric)
-	mux.HandleFunc(`/update/gauge/`, gaugeMetric)
+	globalMemory.Counter = make(map[string]int64)
+	globalMemory.Gauge = make(map[string]float64)
 
-	globalMemory.counter = make(map[string]int64)
-	globalMemory.gauge = make(map[string]float64)
+	r := gin.Default()
+	r.POST("/update/:type/:name/:value", func(c *gin.Context) {
+		globalMemory.UpdateMetrics(c)
+	})
+	r.GET("/value/:type/:name/", func(c *gin.Context) {
+		globalMemory.GetMetric(c)
+	})
+	r.GET("/", func(c *gin.Context) {
+		globalMemory.PrintMetrics(c)
+	})
 
-	err := http.ListenAndServe(`:8080`, mux)
+	err := r.Run(":8080")
 	if err != nil {
 		panic(err)
 	}
