@@ -1,17 +1,20 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"math/rand"
 	"net/http"
+	"os"
 	"runtime"
+	"strconv"
 	"sync"
 	"time"
 )
 
 // Функция для отправки метрики на сервер
-func sendMetric(metricType, name string, value interface{}) {
-	url := fmt.Sprintf("http://localhost:8080/update/%s/%s/%v", metricType, name, value)
+func sendMetric(metricType, name string, value interface{}, addr string) {
+	url := fmt.Sprintf("http://%s/update/%s/%s/%v", addr, metricType, name, value)
 	_, err := http.Post(url, "text/plain", nil)
 	if err != nil {
 		fmt.Println("Error sending metric:", err)
@@ -52,20 +55,46 @@ func collectMetrics(metrics *map[string]interface{}, mu *sync.Mutex) {
 	(*metrics)["StackSys"] = memStats.StackSys
 	(*metrics)["Sys"] = memStats.Sys
 	(*metrics)["TotalAlloc"] = memStats.TotalAlloc
-	// ещё 2 метрики
+
 	(*metrics)["RandomValue"] = rand.Float64()
 
 }
 
 func main() {
-	pollInterval := 2 * time.Second
-	reportInterval := 10 * time.Second
+	var addr string
+	var pi int
+	var ri int
+	var err error
+
+	flag.IntVar(&pi, "p", 2, "pollInterval")
+	flag.IntVar(&ri, "r", 10, "reportInterval")
+	flag.StringVar(&addr, "a", "localhost:8080", "input addr serv")
+	flag.Parse()
+
+	if envRunAddr := os.Getenv("ADDRESS"); envRunAddr != "" {
+		addr = envRunAddr
+	}
+	if envReportInterval := os.Getenv("REPORT_INTERVAL"); envReportInterval != "" {
+		ri, err = strconv.Atoi(envReportInterval)
+		if err != nil {
+			return
+		}
+	}
+	if envPoolInterval := os.Getenv("POLL_INTERVAL"); envPoolInterval != "" {
+		pi, err = strconv.Atoi(envPoolInterval)
+		if err != nil {
+			return
+		}
+
+	}
+
+	pollInterval := time.Duration(pi) * time.Second
+	reportInterval := time.Duration(ri) * time.Second
 
 	var pollCount int64
 	metrics := make(map[string]interface{})
 	var mu sync.Mutex
 
-	// Таймер для сбора метрик
 	go func() {
 		for {
 			collectMetrics(&metrics, &mu)
@@ -74,15 +103,13 @@ func main() {
 		}
 	}()
 
-	// Таймер для отправки метрик
 	for {
 		<-time.After(reportInterval)
-
 		mu.Lock()
 		for name, value := range metrics {
-			go sendMetric("gauge", name, value)
+			go sendMetric("gauge", name, value, addr)
 		}
-		sendMetric("counter", "PollCount", pollCount)
+		sendMetric("counter", "PollCount", pollCount, addr)
 		mu.Unlock()
 	}
 }

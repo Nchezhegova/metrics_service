@@ -2,7 +2,9 @@ package main
 
 import (
 	"awesomeProject1/internal/handlers"
+	"flag"
 	"github.com/gin-gonic/gin"
+	"os"
 )
 
 var globalMemory = handlers.MemStorage{}
@@ -22,7 +24,13 @@ func main() {
 		globalMemory.PrintMetrics(c)
 	})
 
-	err := r.Run(":8080")
+	var addr string
+	flag.StringVar(&addr, "a", "localhost:8080", "input addr serv")
+	flag.Parse()
+	if envRunAddr := os.Getenv("ADDRESS"); envRunAddr != "" {
+		addr = envRunAddr
+	}
+	err := r.Run(addr)
 	if err != nil {
 		panic(err)
 	}
